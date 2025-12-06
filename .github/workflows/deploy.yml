@@ -13,22 +13,6 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-
-    - name: Setup pnpm
-      uses: pnpm/action-setup@v2
-      with:
-        version: 8
-
-    - name: Install dependencies
-      run: pnpm install
-
-    - name: Build project
-      run: pnpm build
-
     - name: Deploy to server
       uses: easingthemes/ssh-deploy@main
       env:
@@ -36,11 +20,11 @@ jobs:
         REMOTE_HOST: ${{ secrets.REMOTE_HOST }}
         REMOTE_USER: ${{ secrets.REMOTE_USER }}
         TARGET: ${{ secrets.REMOTE_TARGET }}
-        EXCLUDE: "/node_modules/, /.git/, /.github/"
-        SCRIPT_BEFORE: |
-          pm2 stop reeziat-dev || true
+        EXCLUDE: "/node_modules/, /.git/, /.github/, /.next/"
         SCRIPT_AFTER: |
           cd ${{ secrets.REMOTE_TARGET }}
-          pnpm install --prod
-          pm2 restart reeziat-dev || pm2 start pnpm --name reeziat-dev -- start -- -p 3001
+          export CI=true
+          pnpm install --no-frozen-lockfile
+          pnpm build
+          pm2 restart reeziat-dev || PORT=3002 pm2 start 'pnpm start' --name reeziat-dev
           pm2 save
