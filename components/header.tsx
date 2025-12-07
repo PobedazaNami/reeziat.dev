@@ -51,15 +51,6 @@ export function Header() {
         : "bg-transparent"
         }`}
     >
-      {/* 🎄 New Year Garland */}
-      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-red-500 via-green-500 via-red-500 via-green-500 to-red-500 opacity-60" />
-      <div className="absolute top-0 left-0 right-0 flex justify-around text-xs pointer-events-none">
-        {["✨", "🎄", "⭐", "🎅", "❄️", "🎁", "✨", "🎄", "⭐", "❄️"].map((emoji, i) => (
-          <span key={i} className="animate-bounce" style={{ animationDelay: `${i * 0.1}s`, animationDuration: "2s" }}>
-            {emoji}
-          </span>
-        ))}
-      </div>
 
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 lg:px-8">
         <div className="flex lg:flex-1">
@@ -70,7 +61,7 @@ export function Header() {
             </div>
             <div className="flex flex-col">
               <span className="text-sm font-bold text-foreground leading-tight">
-                Oleksandr<span className="text-primary">.</span>dev
+                reeziat<span className="text-primary">.</span>dev
               </span>
               <span className="text-[10px] text-muted-foreground font-mono">&lt;Python Developer /&gt;</span>
             </div>

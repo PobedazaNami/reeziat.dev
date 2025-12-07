@@ -14,7 +14,7 @@ export function About() {
       location: "Location",
       locationValue: "Weiterstadt, Germany",
       languages: "Languages",
-      languagesValue: "German (B2), English, Ukrainian, Russian",
+      languagesValue: "German , English, Ukrainian, Russian",
       focus: "Focus",
       focusValue: "Automation & AI Integration",
     },
