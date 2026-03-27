@@ -12,6 +12,42 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
+
+    - name: Detect deploy scope
+      id: changes
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        before="${{ github.event.before }}"
+        if [ "$before" = "0000000000000000000000000000000000000000" ]; then
+          before="$(git rev-list --max-parents=0 HEAD)"
+        elif ! git cat-file -e "$before^{commit}" 2>/dev/null; then
+          git fetch --no-tags --depth=1 origin "$before"
+        fi
+
+        changed_files="$(git diff --name-only "$before" "${{ github.sha }}")"
+        deps_changed=false
+        build_required=false
+
+        while IFS= read -r file; do
+          [ -z "$file" ] && continue
+
+          case "$file" in
+            package.json|pnpm-lock.yaml)
+              deps_changed=true
+              build_required=true
+              ;;
+            app/*|components/*|hooks/*|lib/*|styles/*|next.config.mjs|tsconfig.json|postcss.config.mjs)
+              build_required=true
+              ;;
+          esac
+        done <<< "$changed_files"
+
+        echo "deps_changed=$deps_changed" >> "$GITHUB_OUTPUT"
+        echo "build_required=$build_required" >> "$GITHUB_OUTPUT"
 
     - name: Deploy to server
       uses: easingthemes/ssh-deploy@main
@@ -22,9 +58,18 @@ jobs:
         TARGET: ${{ secrets.REMOTE_TARGET }}
         EXCLUDE: "/node_modules/, /.git/, /.github/, /.next/"
         SCRIPT_AFTER: |
+          set -e
           cd ${{ secrets.REMOTE_TARGET }}
           export CI=true
-          pnpm install --no-frozen-lockfile
-          pnpm build
-          pm2 restart reeziat-dev || PORT=3002 pm2 start 'pnpm start' --name reeziat-dev
-          pm2 save
+
+          if [ "${{ steps.changes.outputs.deps_changed }}" = "true" ] || [ ! -d node_modules ]; then
+            pnpm install --frozen-lockfile
+          fi
+
+          if [ "${{ steps.changes.outputs.build_required }}" = "true" ] || [ ! -d .next ]; then
+            pnpm build
+            pm2 describe reeziat-dev >/dev/null 2>&1 && pm2 restart reeziat-dev || PORT=3002 pm2 start pnpm --name reeziat-dev -- start
+            pm2 save
+          else
+            echo "No runtime changes detected. Skipping build and restart."
+          fi
