@@ -89,6 +89,16 @@ const projects = [
         video: "https://www.youtube.com/watch?v=fdH1PO07Hj4",
         image: "/images/photo_2025-12-04_19-29-35.jpg",
       },
+      {
+        title: "GeoLend 2001",
+        description:
+          "Service landing page for a land management and geodesy company: presents services, process steps, target audiences, and contact points for заявки по земельным вопросам.",
+        tech: ["Landing Page", "Responsive Design", "Service Website", "Lead Form"],
+        icon: Globe,
+        github: "",
+        demo: "https://geolend.com.ua/",
+        image: "/images/photo_2026-03-27_geolend-mobile.jpg",
+      },
     ],
   },
   {
