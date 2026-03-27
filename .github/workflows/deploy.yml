@@ -49,27 +49,109 @@ jobs:
         echo "deps_changed=$deps_changed" >> "$GITHUB_OUTPUT"
         echo "build_required=$build_required" >> "$GITHUB_OUTPUT"
 
-    - name: Deploy to server
-      uses: easingthemes/ssh-deploy@main
+    - name: Configure SSH
+      shell: bash
       env:
         SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         REMOTE_HOST: ${{ secrets.REMOTE_HOST }}
+        REMOTE_PORT: ${{ secrets.REMOTE_PORT }}
+      run: |
+        set -euo pipefail
+
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+        printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
+
+        remote_port="${REMOTE_PORT:-22}"
+        for attempt in 1 2 3; do
+          if ssh-keyscan -p "$remote_port" -H "$REMOTE_HOST" >> ~/.ssh/known_hosts; then
+            break
+          fi
+
+          echo "ssh-keyscan attempt $attempt failed."
+          if [ "$attempt" -eq 3 ]; then
+            exit 1
+          fi
+
+          sleep $((attempt * 5))
+        done
+
+        chmod 644 ~/.ssh/known_hosts
+
+    - name: Sync files to server
+      shell: bash
+      env:
+        REMOTE_HOST: ${{ secrets.REMOTE_HOST }}
         REMOTE_USER: ${{ secrets.REMOTE_USER }}
+        REMOTE_PORT: ${{ secrets.REMOTE_PORT }}
         TARGET: ${{ secrets.REMOTE_TARGET }}
-        EXCLUDE: "/node_modules/, /.git/, /.github/, /.next/"
-        SCRIPT_AFTER: |
-          set -e
-          cd ${{ secrets.REMOTE_TARGET }}
-          export CI=true
+      run: |
+        set -euo pipefail
 
-          if [ "${{ steps.changes.outputs.deps_changed }}" = "true" ] || [ ! -d node_modules ]; then
-            pnpm install --frozen-lockfile
+        remote_port="${REMOTE_PORT:-22}"
+        ssh_cmd="ssh -p $remote_port -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
+
+        for attempt in 1 2 3; do
+          if rsync -rlgoDzvc -i \
+            --exclude=/node_modules/ \
+            --exclude=/.git/ \
+            --exclude=/.github/ \
+            --exclude=/.next/ \
+            --rsh "$ssh_cmd" \
+            ./ "$REMOTE_USER@$REMOTE_HOST:$TARGET"; then
+            exit 0
           fi
 
-          if [ "${{ steps.changes.outputs.build_required }}" = "true" ] || [ ! -d .next ]; then
-            pnpm build
-            pm2 describe reeziat-dev >/dev/null 2>&1 && pm2 restart reeziat-dev || PORT=3002 pm2 start pnpm --name reeziat-dev -- start
-            pm2 save
-          else
-            echo "No runtime changes detected. Skipping build and restart."
+          echo "Rsync attempt $attempt failed."
+          if [ "$attempt" -lt 3 ]; then
+            sleep $((attempt * 10))
           fi
+        done
+
+        echo "Rsync failed after 3 attempts."
+        exit 1
+
+    - name: Run remote deploy commands
+      shell: bash
+      env:
+        REMOTE_HOST: ${{ secrets.REMOTE_HOST }}
+        REMOTE_USER: ${{ secrets.REMOTE_USER }}
+        REMOTE_PORT: ${{ secrets.REMOTE_PORT }}
+        TARGET: ${{ secrets.REMOTE_TARGET }}
+        DEPS_CHANGED: ${{ steps.changes.outputs.deps_changed }}
+        BUILD_REQUIRED: ${{ steps.changes.outputs.build_required }}
+      run: |
+        set -euo pipefail
+
+        remote_port="${REMOTE_PORT:-22}"
+        for attempt in 1 2 3; do
+          if ssh -p "$remote_port" -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 "$REMOTE_USER@$REMOTE_HOST" <<EOF
+            set -e
+            cd "$TARGET"
+            export CI=true
+
+            if [ "$DEPS_CHANGED" = "true" ] || [ ! -d node_modules ]; then
+              pnpm install --frozen-lockfile
+            fi
+
+            if [ "$BUILD_REQUIRED" = "true" ] || [ ! -d .next ]; then
+              pnpm build
+              pm2 describe reeziat-dev >/dev/null 2>&1 && pm2 restart reeziat-dev || PORT=3002 pm2 start pnpm --name reeziat-dev -- start
+              pm2 save
+            else
+              echo "No runtime changes detected. Skipping build and restart."
+            fi
+          EOF
+          then
+            exit 0
+          fi
+
+          echo "Remote deploy attempt $attempt failed."
+          if [ "$attempt" -lt 3 ]; then
+            sleep $((attempt * 10))
+          fi
+        done
+
+        echo "Remote deploy failed after 3 attempts."
+        exit 1
